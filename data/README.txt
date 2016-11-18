@@ -1,1 +1,2 @@
-data holds input data to the algorithms (e.g. MNIST data).
+data:
+holds input data to the algorithms (e.g. MNIST data).

@@ -1,4 +1,6 @@
-
+This is a copy+paste from:
+https://mycourses.aalto.fi/pluginfile.php/387827/mod_resource/content/2/Exercises-StructuredProbabilisticModelsForDeepLearning.pdf
+##########################################################################
 CS-E4050, Deep Learning, Autumn '16
 Exercise Tasks:  Structured
 Probabilistic Models for Deep Learning.

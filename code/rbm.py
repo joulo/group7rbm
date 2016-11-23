@@ -25,6 +25,14 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from utils import tile_raster_images
 from logistic_sgd import load_data
 
+# Check if we are running with or without graphical display.
+if (os.environ.get("DISPLAY", "NONE") == "NONE"):
+    matplotlib.use("Agg")
+    havedisplay = False
+else:
+    havedisplay = True
+import matplotlib.pyplot as plt
+
 
 # start-snippet-1
 class RBM(object):
@@ -225,7 +233,11 @@ class RBM(object):
         """
 
         # compute positive phase
-        pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(self.input)
+        if (k > 0):
+            pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(self.input)
+        else:
+            random_input = 0
+            pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(self.input)
 
         # decide how to initialize persistent chain:
         # for CD, we use the newly generate hidden sample
@@ -363,7 +375,7 @@ class RBM(object):
 def test_rbm(learning_rate=0.1, training_epochs=15,
              dataset='mnist.pkl.gz', batch_size=20,
              n_chains=20, n_samples=10, output_folder='rbm_plots',
-             n_hidden=500):
+             n_hidden=500, persistent_chain_start=None):
     """
     Demonstrate how to train and afterwards sample from it using Theano.
 
@@ -380,6 +392,9 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     :param n_chains: number of parallel Gibbs chains to be used for sampling
 
     :param n_samples: number of samples to plot for each chain
+    
+    :param persistent_chain_start: start with something else but training data
+    
 
     """
     datasets = load_data(dataset)
@@ -401,15 +416,17 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     # layer of chain)
     persistent_chain = theano.shared(numpy.zeros((batch_size, n_hidden),
                                                  dtype=theano.config.floatX),
-                                     borrow=True)
+                                                 borrow=True)
 
     # construct the RBM class
     rbm = RBM(input=x, n_visible=28 * 28,
               n_hidden=n_hidden, numpy_rng=rng, theano_rng=theano_rng)
 
     # get the cost and the gradient corresponding to one step of CD-15
-    cost, updates = rbm.get_cost_updates(lr=learning_rate,
-                                         persistent=persistent_chain, k=15)
+    cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=persistent_chain, k=15)
+    
+    # Initialize with None.
+    #cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=None, k=1) # k=15)
 
     #################################
     #     Training the RBM          #
@@ -434,6 +451,13 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     plotting_time = 0.
     start_time = timeit.default_timer()
 
+    global havedisplay
+    fig1 = None
+    fig2 = None
+    if (havedisplay == True):
+        fig1 = plt.figure()
+        fig2 = plt.figure()
+        
     # go through training epochs
     for epoch in range(training_epochs):
 
@@ -442,7 +466,8 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         for batch_index in range(n_train_batches):
             mean_cost += [train_rbm(batch_index)]
 
-        print('Training epoch %d, cost is ' % epoch, numpy.mean(mean_cost))
+        mean_mean_cost = numpy.mean(mean_cost)
+        print('Training epoch %d, cost is ' % epoch, mean_mean_cost)
 
         # Plot filters after each training epoch
         plotting_start = timeit.default_timer()
@@ -455,9 +480,21 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
                 tile_spacing=(1, 1)
             )
         )
+        # Plot live to screen if we have graphical display.
+        if (havedisplay == True):
+            plt.figure(1)
+            fig1.clear()
+            plt.imshow(image, cmap='Greys_r')
+            plt.title('at_epoch %i, cost is %i' % (epoch, round(mean_mean_cost)))
+            plt.draw()
+            plt.show(block=False)
+        
         image.save('filters_at_epoch_%i.png' % epoch)
         plotting_stop = timeit.default_timer()
         plotting_time += (plotting_stop - plotting_start)
+
+        # See the test sample after every epoch.
+        sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch, fig2)
 
     end_time = timeit.default_timer()
 
@@ -465,10 +502,28 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
 
     print ('Training took %f minutes' % (pretraining_time / 60.))
     # end-snippet-5 start-snippet-6
+
+    # sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch, fig2)
+    
+def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch=None, fig2=None):  
+    """
+    :param rbm = the trained RBM model.
+    :param epoch: How many epochs has been done.
+    """
+    
     #################################
     #     Sampling from the RBM     #
     #################################
     # find out the number of test samples
+    if not os.path.isdir(output_folder):
+        os.makedirs(output_folder)
+    os.chdir(output_folder)
+    
+    if (epoch == None):
+        ecoch_str = 'Unknown'
+    else:
+        epoch_str = '%i' % epoch
+    
     number_of_test_samples = test_set_x.get_value(borrow=True).shape[0]
 
     # pick random test examples, with which to initialize the persistent chain
@@ -527,7 +582,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         # generate `plot_every` intermediate samples that we discard,
         # because successive samples in the chain are too correlated
         vis_mf, vis_sample = sample_fn()
-        print(' ... plotting sample %d' % idx)
+        print(' ... plotting sample %d in epoch ' % idx, epoch_str)
         image_data[29 * idx:29 * idx + 28, :] = tile_raster_images(
             X=vis_mf,
             img_shape=(28, 28),
@@ -537,9 +592,18 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
 
     # construct image
     image = Image.fromarray(image_data)
-    image.save('samples.png')
+    image.save('samples-%s.png' % epoch_str)
     # end-snippet-7
     os.chdir('../')
 
+    if (havedisplay == True):
+        plt.figure(2)
+        fig2.clear()
+        plt.imshow(image, cmap='Greys_r')
+        plt.title('After %s epochs.' % epoch_str)
+        plt.show(block=False)
+        plt.draw()
+        
+
 if __name__ == '__main__':
-    test_rbm()
+    test_rbm(batch_size=20, training_epochs=50)

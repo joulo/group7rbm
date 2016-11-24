@@ -19,7 +19,9 @@ contains the main codes (which are Python-files).
 
 # DIRECTORY configFiles
 configuration files for specifying (varying) experiment details (such as hyperparameter values), inputs to the main codes
-results the experiment results are written to subdirectories specified in the
+
+# DIRECTORY results
+the experiment results are written to subdirectories specified in the
 configuration files; have matching names with the configuration file name
 and the results directory name.
 

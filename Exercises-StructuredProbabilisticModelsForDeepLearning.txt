@@ -1,105 +1,75 @@
 This is a copy+paste from:
 https://mycourses.aalto.fi/pluginfile.php/387827/mod_resource/content/2/Exercises-StructuredProbabilisticModelsForDeepLearning.pdf
 ##########################################################################
-CS-E4050, Deep Learning, Autumn '16
-Exercise Tasks:  Structured
+CS-E4050, Deep Learning, Autumn ’16
+Exercise Tasks: Structured
 Probabilistic Models for Deep Learning.
 Aalto University
-10 November 2016
-The exercise tasks are related to understanding properties of an
+10 November 2016The exercise tasks are related to understanding properties of an
 RBM and its property changes during a particular gradient-based
-training method.  Tasks for everyone:
-I
-Familiarize with the 'Restricted Boltzmann Machines' - tutorial
-at
-http://deeplearning.net/tutorial/rbm.html
-.
-I
-Use the tutorial code (or your own implementation of the
+training method. Tasks for everyone:
+I Familiarize with the ’Restricted Boltzmann Machines’ - tutorial
+at http://deeplearning.net/tutorial/rbm.html.
+I Use the tutorial code (or your own implementation of the
 relevant functionalities) to train a set of RBMs:
-I
-It is recommended to consider the same or similar data
+I It is recommended to consider the same or similar data
 as in the demo.
-I
-Use the persistent CD-approach in training; try to obtain
+I Use the persistent CD-approach in training; try to obtain
 a good generative model.
-I
-Introduce functionality to store model parameters at
+I Introduce functionality to store model parameters at
 various points during training; have the negative particles
-stored, too.  Choose a saving scheme that you consider
+stored, too. Choose a saving scheme that you consider
 makes sense; these should include parameter
-con gurations from early on and from the end part of the
-training.  These parameters extracted from 1 training run
-will parametrize the RBMs that you will analyze later.
-Task speci cs for the presenters:
+configurations from early on and from the end part of the
+training. These parameters extracted from 1 training run
+will parametrize the RBMs that you will analyze later.Task specifics for the presenters:
 Analysis of sampling from the RBM-models using your own
 Gibbs-sampling implementation:
-I
-Visualize how the con gurations of the visible units evolve
+I Visualize how the configurations of the visible units evolve
 during the procedure of sampling from the models using
 Gibbs-sampling.
-I
-Does the 'burn-in' time (appear) to vary across the di erent
+I Does the ’burn-in’ time (appear) to vary across the different
 models?
-I
-How does the initialization a ect the results?
-I
-Were the results obtained expected?
-Analysis of properties of the "best" RBM-model:
-I
-Data points (training, validation, test) vs.  negative particles
-vs.  model samples:  Discuss their properties (at least their
+I How does the initialization affect the results?
+I Were the results obtained expected?Analysis of properties of the ”best” RBM-model:
+I Data points (training, validation, test) vs. negative particles
+vs. model samples: Discuss their properties (at least their
 appearance qualitatively) in relation to each other, providing
 visualizations.
-I
-Model parameters (weights, biases):  Discuss their properties
+I Model parameters (weights, biases): Discuss their properties
 (at least qualitatively), providing visualizations.
-I
-Hidden unit activation probabilities as response to data, and
-their statistics:  Discuss their properties (at least qualitatively),
-providing visualizations.  Voluntary:  analysis of
-"reconstructing" data from hidden unit states as response to
-data examples.
-Task speci cs for the non-presenters:
+I Hidden unit activation probabilities as response to data, and
+their statistics: Discuss their properties (at least qualitatively),
+providing visualizations. Voluntary: analysis of
+”reconstructing” data from hidden unit states as response to
+data examples.Task specifics for the non-presenters:
 Analysis on model property changes during training:
-I
-Evolution of negative particles and model samples:  Discuss
+I Evolution of negative particles and model samples: Discuss
 their properties (at least their appearance qualitatively) in
 relation to each other and the observed data, providing
 visualizations; How do the sets change during the training?
 Model sampling should be done using your own
 implementation of Gibbs-sampling.
-I
-Evolution of model parameters (weights, biases):  Discuss their
+I Evolution of model parameters (weights, biases): Discuss their
 properties (at least qualitatively), providing visualizations; how
 do the parameters change during the training?
-I
-Evolution of hidden unit activation probabilities as response to
-data, and their statistics:  Discuss their properties (at least
-qualitatively), providing visualizations.  How do they change
-during the training?  Voluntary:  analysis of "reconstructing"
+I Evolution of hidden unit activation probabilities as response to
+data, and their statistics: Discuss their properties (at least
+qualitatively), providing visualizations. How do they change
+during the training? Voluntary: analysis of ”reconstructing”
 data from hidden unit states as response to data examples,
-from the set of models.
-I
-Were the results obtained expected?
-Notes and Hints (for Everyone):
+from the set of models.I
+Were the results obtained expected?Notes and Hints (for Everyone):
 Notes:
-I
-Sampling from a model:  Do not start (the Gibbs-samplers)
+I Sampling from a model: Do not start (the Gibbs-samplers)
 from the observed data (training, validation or test).
-I
-Reporting:  Describe your approach and the results in the
+I Reporting: Describe your approach and the results in the
 report (providing visualizations, most important lines of code,
 etc.).
 Hints:
 I
 A reference that may well be useful:
-G. E. Hinton.
-A practical guide to training restricted
-Boltzmann machines
-.  Technical Report UTML TR 2010-003,
+G. E. Hinton. A practical guide to training restricted
+Boltzmann machines. Technical Report UTML TR 2010-003,
 Department of Computer Science, University of Toronto, 2010.
-URL:
-http://www.cs.toronto.edu/
-~
-hinton/absps/guideTR.pdf
+URL: http://www.cs.toronto.edu/~hinton/absps/guideTR.pdf

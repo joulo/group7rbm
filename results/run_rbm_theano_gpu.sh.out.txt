@@ -1,3 +1,4 @@
+$ . ../submitFiles/run_rbm_theano_gpu.sh
 #  Fri Nov 18 17:37:47 EET 2016
 
 Using gpu device 0: GeForce GTX 570

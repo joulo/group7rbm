@@ -7,7 +7,12 @@ to those without visible-visible and hidden-hidden connections.
 
 from __future__ import print_function
 
+import sys
 import timeit
+import time
+import inspect
+import pickle
+import signal
 
 try:
     import PIL.Image as Image
@@ -24,6 +29,14 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from utils import tile_raster_images
 from logistic_sgd import load_data
+
+# Stop training when SIGINT given.
+done_looping=False
+def signal_handler(signal, frame):
+        print('You pressed Ctrl+C or otherwise (SIGINT) terminated. Wait loop to end.')
+        global done_looping
+        done_looping=True
+signal.signal(signal.SIGINT, signal_handler)
 
 # Check if we are running with or without graphical display.
 if (os.environ.get("DISPLAY", "NONE") == "NONE"):
@@ -77,7 +90,8 @@ class RBM(object):
 
         if numpy_rng is None:
             # create a number generator
-            numpy_rng = numpy.random.RandomState(1234)
+            numpy_rng = numpy.random.RandomState(None) # Was 1234
+        self.numpy_rng = numpy_rng
 
         if theano_rng is None:
             theano_rng = RandomStreams(numpy_rng.randint(2 ** 30))
@@ -214,7 +228,7 @@ class RBM(object):
                 pre_sigmoid_v1, v1_mean, v1_sample]
 
     # start-snippet-2
-    def get_cost_updates(self, lr=0.1, persistent=None, k=1):
+    def get_cost_updates(self, lr=0.1, persistent=None, k=1, random_start = False):
         """This functions implements one step of CD-k or PCD-k
 
         :param lr: learning rate used to train the RBM
@@ -223,7 +237,8 @@ class RBM(object):
             containing old state of Gibbs chain. This must be a shared
             variable of size (batch size, number of hidden units).
 
-        :param k: number of Gibbs steps to do in CD-k/PCD-k
+        :param k: number of Gibbs steps to do in CD-k/PCD-k. If
+            if k=0, initialise v-layer with random sample.
 
         Returns a proxy for the cost and the updates dictionary. The
         dictionary contains the update rules for weights and biases but
@@ -233,11 +248,11 @@ class RBM(object):
         """
 
         # compute positive phase
-        if (k > 0):
+        if (random_start == False):
             pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(self.input)
         else:
-            random_input = 0
-            pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(self.input)
+            random_input = self.theano_rng.binomial(size=self.input.shape, n=1, p=0.5, dtype=theano.config.floatX)
+            pre_sigmoid_ph, ph_mean, ph_sample = self.sample_h_given_v(random_input)
 
         # decide how to initialize persistent chain:
         # for CD, we use the newly generate hidden sample
@@ -374,8 +389,8 @@ class RBM(object):
 
 def test_rbm(learning_rate=0.1, training_epochs=15,
              dataset='mnist.pkl.gz', batch_size=20,
-             n_chains=20, n_samples=10, output_folder='rbm_plots',
-             n_hidden=500, persistent_chain_start=None):
+             n_chains=20, n_samples=10, output_folder=None,
+             n_hidden=500, persistent_chain_start=None, test_often=False):
     """
     Demonstrate how to train and afterwards sample from it using Theano.
 
@@ -395,6 +410,8 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     
     :param persistent_chain_start: start with something else but training data
     
+    :param test_often: Do we sample with test-set after each epoch?
+    
 
     """
     datasets = load_data(dataset)
@@ -409,7 +426,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     index = T.lscalar()    # index to a [mini]batch
     x = T.matrix('x')  # the data is presented as rasterized images
 
-    rng = numpy.random.RandomState(123)
+    rng = numpy.random.RandomState(None) # was 123
     theano_rng = RandomStreams(rng.randint(2 ** 30))
 
     # initialize storage for the persistent chain (state = hidden
@@ -423,18 +440,26 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
               n_hidden=n_hidden, numpy_rng=rng, theano_rng=theano_rng)
 
     # get the cost and the gradient corresponding to one step of CD-15
-    cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=persistent_chain, k=15)
+    cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=persistent_chain, 
+                                         k=15, random_start=False)
     
-    # Initialize with None.
-    #cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=None, k=1) # k=15)
+    # Initialize with random input.
+    #cost, updates = rbm.get_cost_updates(lr=learning_rate, persistent=None, k=15, random_start=True)
+    
+    start_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+    if (output_folder == None):
+        output_folder = "rbm_data_" + start_str
+        if not os.path.isdir(output_folder):
+            os.makedirs(output_folder)
+        os.chdir(output_folder)
+
+    # Save model after init but not yet trained.
+    with open('rbm_model_init_' + start_str + '.pkl', 'wb') as f:
+        pickle.dump(rbm, f)
 
     #################################
     #     Training the RBM          #
     #################################
-    if not os.path.isdir(output_folder):
-        os.makedirs(output_folder)
-    os.chdir(output_folder)
-
     # start-snippet-5
     # it is ok for a theano function to have no output
     # the purpose of train_rbm is solely to update the RBM parameters
@@ -454,13 +479,26 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     global havedisplay
     fig1 = None
     fig2 = None
+    fig3 = None
     if (havedisplay == True):
-        fig1 = plt.figure()
-        fig2 = plt.figure()
+        fig1 = plt.figure() # Visualise W.
+        fig2 = plt.figure() # Visualise samples.
+        fig3 = plt.figure() # Average costs, sum of squares Ws,vbiases,hbiases.
+        ax1 = fig3.add_subplot(221) 
+        ax2 = fig3.add_subplot(222)
+        ax3 = fig3.add_subplot(223)
+        ax4 = fig3.add_subplot(224) 
         
+    costs = []
+    Ws =[]
+    vbiases = []
+    hbiases = []
+    
     # go through training epochs
-    for epoch in range(training_epochs):
-
+    global done_looping
+    epoch = 0
+    while (epoch < training_epochs) and (not done_looping):
+        epoch = epoch + 1
         # go through the training set
         mean_cost = []
         for batch_index in range(n_train_batches):
@@ -468,7 +506,13 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
 
         mean_mean_cost = numpy.mean(mean_cost)
         print('Training epoch %d, cost is ' % epoch, mean_mean_cost)
-
+        
+        # Collect some data to monitor learning.
+        costs += [mean_mean_cost]
+        Ws += [squared_sum(rbm.W)]
+        vbiases += [squared_sum(rbm.vbias)]
+        hbiases += [squared_sum(rbm.hbias)]
+        
         # Plot filters after each training epoch
         plotting_start = timeit.default_timer()
         # Construct image from the weight matrix
@@ -480,21 +524,42 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
                 tile_spacing=(1, 1)
             )
         )
-        # Plot live to screen if we have graphical display.
+        # Plot weights and costs live to screen if we have graphical display.
         if (havedisplay == True):
             plt.figure(1)
             fig1.clear()
             plt.imshow(image, cmap='Greys_r')
-            plt.title('at_epoch %i, cost is %i' % (epoch, round(mean_mean_cost)))
+            plt.title('After epoch %02i, cost is %i' % (epoch, round(mean_mean_cost)))
             plt.draw()
             plt.show(block=False)
+            
+            if (epoch > 0):
+                plt.figure(3)
+                ax1.plot(range(1,epoch+1), costs)
+                ax1.set_title('costs')
+                ax2.plot(range(1,epoch+1), Ws)
+                ax2.set_title('Ws')
+                ax3.plot(range(1,epoch+1), vbiases)
+                ax3.set_title('vbiases')
+                ax4.plot(range(1,epoch+1), hbiases)
+                ax4.set_title('hbiases')
+                #plt.title('costs sum_of_sq Ws vbiases hbiases after %i epochs' % epoch)
+                plt.draw()
+                plt.show(block=False)
+                
         
-        image.save('filters_at_epoch_%i.png' % epoch)
+        image.save('filters_at_epoch_%02i.png' % epoch)
+        plt.figure(3); 
+        plt.savefig('avecosts-Ws-vbiases-biases-at_epoch_%02i.png' % epoch)
+        
         plotting_stop = timeit.default_timer()
         plotting_time += (plotting_stop - plotting_start)
 
-        # See the test sample after every epoch.
-        sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch, fig2)
+        if (test_often is True):
+            # See the test sample after every epoch.
+            print_sq_params(rbm)
+            sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=epoch, tofigure=2, plot_every=1000)
+            print_sq_params(rbm)
 
     end_time = timeit.default_timer()
 
@@ -502,28 +567,40 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
 
     print ('Training took %f minutes' % (pretraining_time / 60.))
     # end-snippet-5 start-snippet-6
-
-    # sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch, fig2)
     
-def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, epoch=None, fig2=None):  
+    # Save model
+    with open('rbm_model_end_%02i' % epoch + "_" 
+              + time.strftime("%Y-%m-%d_%H-%M-%S") + '.pkl', 'wb') as f:
+        pickle.dump(rbm, f)
+        
+    if (test_often is False):
+        sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=epoch, tofigure=2)
+
+    # Return back from the created directory.
+    os.chdir('../')
+
+    
+def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=None, tofigure=None, output_folder=None, plot_every=None):  
     """
     :param rbm = the trained RBM model.
     :param epoch: How many epochs has been done.
+    Rest of the parameters are the same as in test_rbm().
     """
     
     #################################
     #     Sampling from the RBM     #
     #################################
-    # find out the number of test samples
-    if not os.path.isdir(output_folder):
-        os.makedirs(output_folder)
-    os.chdir(output_folder)
+    if (output_folder != None and output_folder != 0):
+        if not os.path.isdir(output_folder):
+            os.makedirs(output_folder)
+        os.chdir(output_folder)
     
     if (epoch == None):
         ecoch_str = 'Unknown'
     else:
-        epoch_str = '%i' % epoch
+        epoch_str = '%02i' % epoch
     
+    # find out the number of test samples
     number_of_test_samples = test_set_x.get_value(borrow=True).shape[0]
 
     # pick random test examples, with which to initialize the persistent chain
@@ -535,7 +612,9 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, ep
         )
     )
     # end-snippet-6 start-snippet-7
-    plot_every = 1000
+    if (plot_every == None or plot_every == 0):
+        plot_every = 1000
+        
     # define one step of Gibbs sampling (mf = mean-field) define a
     # function that does `plot_every` steps before returning the
     # sample for plotting
@@ -594,16 +673,23 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, output_folder, ep
     image = Image.fromarray(image_data)
     image.save('samples-%s.png' % epoch_str)
     # end-snippet-7
-    os.chdir('../')
 
     if (havedisplay == True):
-        plt.figure(2)
+        fig2 = plt.figure(tofigure)
         fig2.clear()
         plt.imshow(image, cmap='Greys_r')
         plt.title('After %s epochs.' % epoch_str)
         plt.show(block=False)
         plt.draw()
         
+def squared_sum(x):
+    return numpy.sum(numpy.square(x.get_value()))
 
+# For debugging.
+def print_sq_params(rbm):
+    print("%s - Sums of squares W: %g, vbias: %g, hbias: %g" 
+          % (inspect.stack()[1][3],
+             squared_sum(rbm.W), squared_sum(rbm.vbias), squared_sum(rbm.hbias)))
+    
 if __name__ == '__main__':
-    test_rbm(batch_size=20, training_epochs=50)
+    test_rbm(batch_size=20, training_epochs=50, test_often=True)

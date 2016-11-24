@@ -1,0 +1,44 @@
+digraph G {
+    rbm [label="rbm", style="filled", fillcolor="#FFFFFFB2", fontcolor="#000000", group="0"];
+    rbm__test_rbm [label="test_rbm", style="filled", fillcolor="#CCFFCCB2", fontcolor="#000000", group="1"];
+    rbm__RBM [label="RBM", style="filled", fillcolor="#CCFFCCB2", fontcolor="#000000", group="1"];
+    rbm__RBM__get_cost_updates [label="get_cost_updates", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__propdown [label="propdown", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__sample_h_given_v [label="sample_h_given_v", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__gibbs_hvh [label="gibbs_hvh", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__free_energy [label="free_energy", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__get_reconstruction_cost [label="get_reconstruction_cost", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__get_pseudo_likelihood_cost [label="get_pseudo_likelihood_cost", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__propup [label="propup", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__sample_v_given_h [label="sample_v_given_h", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm__RBM__gibbs_vhv [label="gibbs_vhv", style="filled", fillcolor="#99FF99B2", fontcolor="#000000", group="1"];
+    rbm -> rbm__RBM [style="dashed", color="azure4"];
+    rbm -> rbm__test_rbm [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__propup [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__sample_h_given_v [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__gibbs_vhv [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__free_energy [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__sample_v_given_h [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__get_cost_updates [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__propdown [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__get_reconstruction_cost [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__gibbs_hvh [style="dashed", color="azure4"];
+    rbm__RBM -> rbm__RBM__get_pseudo_likelihood_cost [style="dashed", color="azure4"];
+    rbm__RBM__sample_h_given_v -> rbm__RBM__propup;
+    rbm__test_rbm -> rbm__RBM__gibbs_vhv;
+    rbm__test_rbm -> rbm__RBM__get_cost_updates;
+    rbm__test_rbm -> rbm__RBM;
+    rbm__RBM__gibbs_vhv -> rbm__RBM__sample_h_given_v;
+    rbm__RBM__gibbs_vhv -> rbm__RBM__sample_v_given_h;
+    rbm__RBM__sample_v_given_h -> rbm__RBM__propdown;
+    rbm__RBM__get_cost_updates -> rbm__RBM__get_reconstruction_cost;
+    rbm__RBM__get_cost_updates -> rbm__RBM__free_energy;
+    rbm__RBM__get_cost_updates -> rbm__RBM__gibbs_hvh;
+    rbm__RBM__get_cost_updates -> rbm__RBM__sample_h_given_v;
+    rbm__RBM__get_cost_updates -> rbm__RBM__get_pseudo_likelihood_cost;
+    rbm -> rbm__test_rbm;
+    rbm__RBM__gibbs_hvh -> rbm__RBM__sample_v_given_h;
+    rbm__RBM__gibbs_hvh -> rbm__RBM__sample_h_given_v;
+    rbm__RBM__get_pseudo_likelihood_cost -> rbm__RBM__free_energy;
+}
+

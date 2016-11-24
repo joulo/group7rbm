@@ -37,7 +37,8 @@ from __future__ import print_function
 
 __docformat__ = 'restructedtext en'
 
-import six.moves.cPickle as pickle
+#import six.moves.cPickle as pickle
+import pickle
 import gzip
 import os
 import sys

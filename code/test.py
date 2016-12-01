@@ -5,12 +5,19 @@ import numpy as np
 
 def main():
 
+    from Tkinter import Tk
+    from tkFileDialog import askopenfilename
+    
+    Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+    filename = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+    print(filename)
 
     epoch = 2
     costs = [1,2,3]
     Ws = [3,4,5]
     vbiases = [5,6,7]
     hbiases = [7,8,9]
+
     fig1 = plt.figure()
     ax1 = fig1.add_subplot(221)
     ax2 = fig1.add_subplot(222)
@@ -19,6 +26,10 @@ def main():
     
     while(True):  
         #fig1.clear()
+        np.add(costs,[1,1,1])
+        np.add(Ws, [1,1,1])
+        np.add(vbiases,[1,1,1])
+        np.add(hbiases,[1,1,1])
         ax1.plot(range(epoch+1), costs)
         ax1.set_title('costs')
         ax2.plot(range(epoch+1), Ws)

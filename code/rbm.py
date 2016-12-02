@@ -18,6 +18,7 @@ from argparse import ArgumentParser
 from Tkinter import Tk
 from tkFileDialog import askopenfilename
 import os
+from time import sleep
 
 
 try:
@@ -29,6 +30,8 @@ import numpy
 import theano
 import theano.tensor as T
 from theano import pp
+# For DEBUGging
+#theano.config.optimizer = 'fast_compile'
 
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
@@ -37,10 +40,15 @@ from logistic_sgd import load_data
 
 # Global variables. (Remember to use global command to use them in modules.)
 # Directory where result images and pickled RBM-objects are saved.
+global RESULTS_DIR
 RESULTS_DIR="../results/"
+# Tells if graphical UI is in use.
+global havedisplay
 # For early stopping.
+global done_looping
 done_looping=False
 # Which objects should be saved pickled when SIGUSR1 is got.
+global objects_to_SIGUSR1_picklesave
 objects_to_SIGUSR1_picklesave = []
 
 # Stop training when SIGINT given.
@@ -53,7 +61,7 @@ signal.signal(signal.SIGINT, signal_INT_handler)
 # When SIGUSR1 is received, save pickled objects from list objects_to_picklesave.
 def signal_USR1_handler(signal, frame):
         print('SIGUSR1 received. Storing pickled objects...')
-        global objects_to_picklesave
+        global objects_to_SIGUSR1_picklesave
         for obj in objects_to_SIGUSR1_picklesave:
             objname = obj.__class__.__name__
             filename = 'SIGUSR1_' + objname + '_' + timestamp_str + '.pklz'
@@ -173,7 +181,7 @@ class RBM(object):
         # other than shared variables created in this function.
         self.params = [self.W, self.hbias, self.vbias]
         # end-snippet-1
-
+        
     def free_energy(self, v_sample):
         ''' Function to compute the free energy '''
         wx_b = T.dot(v_sample, self.W) + self.hbias
@@ -312,11 +320,11 @@ class RBM(object):
             n_steps=k,
             name="gibbs_hvh"
         )
-                
         # start-snippet-3
         # determine gradients on RBM parameters
         # note that we only need the sample at the end of the chain
         chain_end = nv_samples[-1]
+        vsamples = nv_samples        
 
         cost = T.mean(self.free_energy(self.input)) - T.mean(
             self.free_energy(chain_end))
@@ -340,7 +348,7 @@ class RBM(object):
             monitoring_cost = self.get_reconstruction_cost(updates,
                                                            pre_sigmoid_nvs[-1])
 
-        return monitoring_cost, updates, nv_means
+        return monitoring_cost, vsamples, updates
         # end-snippet-4
 
     def get_pseudo_likelihood_cost(self, updates):
@@ -417,7 +425,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
              dataset='mnist.pkl.gz', batch_size=10,
              n_chains=20, n_samples=10, output_folder=None,
              n_hidden=500, persistent_chain_start=None, 
-             k = None, test_every=0, pickledRBM=None):
+             k = 15, valid_every=0, pickledRBM=None, showburning=False):
     """
     Demonstrate how to train and afterwards sample from it using Theano.
 
@@ -439,11 +447,18 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     
     :param k: number of Gibbs steps to do in CD-k/PCD-k.
      
-    :param test_every: We sample with test-set after every this many epoch?
+    :param valid_every: We sample with test-set after every this many epoch?
     
     :param pickledRBM: Filename-str. Continue with previously saved RBM-object. 
 
+    :param showburning: If True,use the same exact batch_size sample over and over in training.
     """
+    global havedisplay
+    
+    if (showburning==True and havedisplay==False):
+        print('Cannot show burning if no display, i.e. not running in graphical mode.')
+        exit(1)
+
     datasets = load_data(dataset)
 
     train_set_x, train_set_y = datasets[0]
@@ -482,7 +497,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
                                                  dtype=theano.config.floatX),
                                                  borrow=True)
 
-    # Start/continue with previously trained RBM-object? 
+    # Start/continue with previously trained RBM-object? See --
     if (pickledRBM is not None):
         with gzip.open(pickledRBM, "rb") as f:
             rbm = pickle.load(f)
@@ -491,44 +506,16 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         # construct the RBM class
         rbm = RBM(input=x, n_visible=28 * 28,
                   n_hidden=n_hidden, numpy_rng=rng, theano_rng=theano_rng)
+    
+    global objects_to_SIGUSR1_picklesave
+    objects_to_SIGUSR1_picklesave += [rbm]        # Will be pickle-saved if SIGUSR1 got.
 
     # get the cost and the gradient corresponding to one step of CD-15
     if (k is None or k == 0):
         k=15
-    cost, updates, nv_means = rbm.get_cost_updates(lr=learning_rate, 
-                                                   persistent=persistent_chain, 
-                                                   k=k, random_start=True)
-
-    #####################################################
-    if False:
-        # Plot k v-outputs.
-        epoch = 0
-        rows = 1
-        n_chains=k
-        image_data = numpy.zeros((29 * rows + 1, 29 * n_chains - 1), 
-                                 dtype='uint8')
-        for idx in range(rows):
-            # generate `plot_every` intermediate samples that we discard,
-            # because successive samples in the chain are too correlated
-            print(' ... plotting sample %d in epoch ' % idx, epoch_str(epoch))
-            image_data[29 * idx:29 * idx + 28, :] = tile_raster_images(
-                X=nv_means,
-                img_shape=(28, 28),
-                tile_shape=(1, n_chains),
-                tile_spacing=(1, 1)
-            )
-        image = Image.fromarray(image_data)
-        global havedisplay
-        if (havedisplay == True):
-            fig0 = plt.figure(tofigure)
-            fig0.clear()
-            plt.imshow(image, cmap='Greys_r')
-            plt.title('After %s epochs.' % epoch_str(epoch))
-            plt.show(block=False)
-            plt.draw()
-
-    #####################################################
-
+    cost, vsamples, updates = rbm.get_cost_updates(lr=learning_rate, 
+                                        persistent=persistent_chain, 
+                                        k=k, random_start=True)
     
     # Save model after init but not yet trained.
     with gzip.open('rbm_model_init_' + start_str + '.pklz', 'wb') as f:
@@ -542,18 +529,19 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     # the purpose of train_rbm is solely to update the RBM parameters
     train_rbm = theano.function(
         [index],
-        cost,
+        [cost, vsamples],
         updates=updates,
         givens={
             x: train_set_x[index * batch_size: (index + 1) * batch_size]
         },
-        name='train_rbm'
+        name='train_rbm',
+        mode=None # 'DebugMode'    # DEBUG
     )
 
     plotting_time = 0.
     start_time = timeit.default_timer()
 
-    global havedisplay
+    ## For visualization and monitoring
     fig1 = None
     fig2 = None
     fig3 = None
@@ -567,6 +555,8 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         ax21 = fig3.add_subplot(234)   # vbias
         ax22 = fig3.add_subplot(235)   # hbias
         ax23 = fig3.add_subplot(236)   # free energy of valid data.
+        if (showburning):
+            fig4 = plt.figure()
     # Lists to collect statistics_    
     costs = []
     Ws =[]
@@ -574,18 +564,48 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     hbiases = []
     free_energy_train = []
     free_energy_valid = []
+    ##
     
-    # go through training epochs
     global done_looping     # SIGINT will cause early stopping.
     avecost_fn = None       # Filename for image file for avecosts,W+bias norms.
     epoch = 0
+    if (showburning):       # Pick randomly one sample from tr.data and use it (only).
+        the_batch_index = rbm.numpy_rng.randint(n_train_batches)
+        # Use figure/window 4 to show burning.
+        plt.figure(4)
+        plt.get_current_fig_manager().resize(1024, 1024)
+        plt.show(block=False)
+        sleeptime=15
+        print('Sleep %d seconds...' % sleeptime, end='')
+        time.sleep(sleeptime)
+        print('done.')
+            
+    # go through training epochs
     while (epoch < training_epochs) and (not done_looping):
         epoch = epoch + 1
         # go through the training set
         mean_cost = []
+        if (showburning):
+            plt.figure(4)
         for batch_index in range(n_train_batches):
-            mean_cost += [train_rbm(batch_index)]
-
+            if (showburning == False):
+                cost, vsamples = train_rbm(batch_index)  # vsamples.shape=(k, batch_size, n_visible)
+            else:
+                cost, vsamples = train_rbm(the_batch_index) # Just use same training sample over and over.
+                if (batch_index % 10 == 0):
+                    image = display_digits(vsamples)
+                    plt.clf()
+                    plt.imshow(image, cmap='Greys_r')
+                    plt.axis('off')
+                    plt.xlabel('digit in batch')
+                    plt.ylabel('gibbs rounds')
+                    plt.title('visible layer, epoch=%d, batch_index=%d/%d, gibbstps=%d, batchsize=%d' 
+                              % (epoch, batch_index, n_train_batches, k, batch_size))
+                    plt.show(block=False)
+                    plt.draw()
+            mean_cost += [cost]
+        # enf for batch_index
+        
         mean_mean_cost = numpy.mean(mean_cost)
         print('Training epoch %d, cost is ' % epoch, mean_mean_cost)
         
@@ -618,7 +638,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
             plt.draw()
             plt.show(block=False)
             
-            if (epoch > 0):
+            if (epoch > 3):
                 plt.figure(3)
                 horizrange = range(1,epoch+1)
                 ax11.plot(horizrange, costs)
@@ -649,13 +669,14 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         plotting_stop = timeit.default_timer()
         plotting_time += (plotting_stop - plotting_start)
 
-        if (test_every > 0 and epoch % test_every == 0):
+        if (valid_every > 0 and epoch % valid_every == 0):
             # See the test sample after every epoch.
             print_norm_params(rbm)
             #sample_from_rbm(rbm, burnset_x, rng, n_chains, n_samples=5, epoch=epoch, tofigure=2, plot_every=1000)
-            sample_from_rbm(rbm, valid_set_x, rng, n_chains, n_samples=5, epoch=epoch, tofigure=2, plot_every=1)
+            sample_from_rbm(rbm, valid_set_x, rng, n_chains, n_samples=5, 
+                            epoch=epoch, tofigure=2, figtitle='validation', plot_every=1)
             print_norm_params(rbm)
-
+    # end while epoch
     end_time = timeit.default_timer()
 
     pretraining_time = (end_time - start_time) - plotting_time
@@ -677,7 +698,8 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     os.chdir('../')
 
     
-def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=None, tofigure=None, output_folder=None, plot_every=None):  
+def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, 
+                    epoch=None, tofigure=None, figtitle=None, output_folder=None, plot_every=None):  
     """
     :param rbm = the trained RBM model.
     :param epoch: How many epochs has been done in training (this far).
@@ -687,7 +709,8 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=None, tofig
     :param tofigure: Plot to which figure (number) created with plt.figure before.
     :param plot_every: Plot result image every after this many Gibbs samples.
     """
-    
+    if (figtitle == None):
+        figtitle = 'Testing'
     #################################
     #     Sampling from the RBM     #
     #################################
@@ -746,7 +769,8 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=None, tofig
             vis_samples[-1]
         ],
         updates=updates,
-        name='sample_fn'
+        name='sample_fn',
+        mode=None # 'DebugMode'   # DEBUG
     )
 
     # create a space to store the image for plotting ( we need to leave
@@ -777,7 +801,7 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples, epoch=None, tofig
         fig2 = plt.figure(tofigure)
         fig2.clear()
         plt.imshow(image, cmap='Greys_r')
-        plt.title('After %s epochs.' % epoch_str(epoch))
+        plt.title('%s after %s epochs.' % (figtitle, epoch_str(epoch)))
         plt.show(block=False)
         plt.draw()
         
@@ -798,6 +822,29 @@ def epoch_str(epoch):
         str = '%02i' % epoch
     return str
 
+    
+    
+def display_digits(digits):
+    """
+    # Display MNIST digits
+    :param digits Tuple (rows, cols, digitdots_28x28) 
+    """    
+    rows, cols, n_dots = digits.shape
+    image_data = numpy.zeros(
+        (29 * rows + 1, 29 * cols - 1),
+        dtype='uint8'
+    )
+    for row in range(rows):
+        image_data[29 * row:29 * row + 28, :] = tile_raster_images(
+            X=digits[row],
+            img_shape=(28, 28),
+            tile_shape=(1, cols),
+            tile_spacing=(1, 1)
+        )
+    image = Image.fromarray(image_data)
+    return image
+
+# This function is not currently used.
 def getburndemoset(set_x, set_y, n_chains=20):
     # Return set (x,y) where is MNIST digits of [0-9], each twice.
     x = theano.shared(numpy.asarray(numpy.zeros_like(set_x.get_value()[0:19]),
@@ -821,8 +868,9 @@ def getburndemoset(set_x, set_y, n_chains=20):
 if __name__ == '__main__':
     parser = ArgumentParser(description='RBM network training with MNIST data')
     parser.add_argument("n_epochs", default=200, type=int, nargs='?')
-    parser.add_argument("batch_size", default=1, type=int, nargs='?')
-    parser.add_argument("test_every", default=1, type=int, help="Validate every N epoch", nargs='?')
+    parser.add_argument("batch_size", default=40, type=int, nargs='?')
+    parser.add_argument("gibbs_steps", default=45, type=int, nargs='?')
+    parser.add_argument("valid_every", default=1, type=int, help="Validate every N epoch", nargs='?')
     parser.add_argument("--load_rbm", default=None, nargs=1,
                         help="Input pickled RBM filename. \"ASK\" will ask.")
     args = parser.parse_args()
@@ -834,9 +882,16 @@ if __name__ == '__main__':
         filename=None
 
     print(time.strftime("%Y-%m-%d_%H-%M-%S"))
-    print("RBM training with parameters: n_epochs=%d batch_size=%d test_every=%d" 
-          % (args.n_epochs, args.batch_size, args.test_every))
-    test_rbm(training_epochs=args.n_epochs, batch_size=args.batch_size, test_every=args.test_every,
-             pickledRBM=filename)
- 
+    print("RBM training with parameters: n_epochs=%d, batch_size=%d, gibbs_steps=%d, valid_every=%d" 
+          % (args.n_epochs, args.batch_size, args.gibbs_steps, args.valid_every))
+
+    if (True):
+        # Show burning by using same training sample all the time and show in window.
+        test_rbm(training_epochs=args.n_epochs, batch_size=args.batch_size, k=args.gibbs_steps, 
+                 valid_every=args.valid_every, pickledRBM=filename, showburning=True)
+    else:
+        # Normal training mode.
+        test_rbm(training_epochs=args.n_epochs, batch_size=args.batch_size, k=args.gibbs_steps,
+                 valid_every=args.valid_every, pickledRBM=filename, showburning=False)
+     
     

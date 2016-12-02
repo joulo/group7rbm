@@ -324,6 +324,10 @@ class RBM(object):
         # determine gradients on RBM parameters
         # note that we only need the sample at the end of the chain
         chain_end = nv_samples[-1]
+        
+        # vsamples are used later to visualization of burning.
+        # We can return them all, or every other, or whatever
+        # but the size should be multiple of batchsize.
         vsamples = nv_samples        
 
         cost = T.mean(self.free_energy(self.input)) - T.mean(
@@ -456,7 +460,7 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
     global havedisplay
     
     if (showburning==True and havedisplay==False):
-        print('Cannot show burning if no display, i.e. not running in graphical mode.')
+        print('Cannot show burning if no display, i.e. Is not running in graphical mode now.')
         exit(1)
 
     datasets = load_data(dataset)
@@ -479,7 +483,8 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
 
     # Get a testing set where there is just 20 digits, each of [0-9] twice.
     # There should be test set with n_chains number of digits at least.
-    burnset_x, burnset_y = getburndemoset(valid_set_x, valid_set_y)
+    # Not used. Settle with random steady sample from training set.
+    #burnset_x, burnset_y = getburndemoset(valid_set_x, valid_set_y)
 
     # compute number of minibatches for training, validation and testing
     n_train_batches = train_set_x.get_value(borrow=True).shape[0] // batch_size
@@ -497,7 +502,9 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
                                                  dtype=theano.config.floatX),
                                                  borrow=True)
 
-    # Start/continue with previously trained RBM-object? See --
+    # Start/continue with previously trained RBM-object?
+    # This does not work yet if the loaded RBM-object is 
+    # something else but the _init_ model. bcz "get the cost and..."
     if (pickledRBM is not None):
         with gzip.open(pickledRBM, "rb") as f:
             rbm = pickle.load(f)
@@ -507,6 +514,10 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
         rbm = RBM(input=x, n_visible=28 * 28,
                   n_hidden=n_hidden, numpy_rng=rng, theano_rng=theano_rng)
     
+    # Save model after init but not yet trained.
+    with gzip.open('rbm_model_init_' + start_str + '.pklz', 'wb') as f:
+        pickle.dump(rbm, f)
+
     global objects_to_SIGUSR1_picklesave
     objects_to_SIGUSR1_picklesave += [rbm]        # Will be pickle-saved if SIGUSR1 got.
 
@@ -517,10 +528,6 @@ def test_rbm(learning_rate=0.1, training_epochs=15,
                                         persistent=persistent_chain, 
                                         k=k, random_start=True)
     
-    # Save model after init but not yet trained.
-    with gzip.open('rbm_model_init_' + start_str + '.pklz', 'wb') as f:
-        pickle.dump(rbm, f)
-
     #################################
     #     Training the RBM          #
     #################################
@@ -783,7 +790,7 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples,
         # generate `plot_every` intermediate samples that we discard,
         # because successive samples in the chain are too correlated
         vis_mf, vis_sample = sample_fn()
-        print(' ... plotting sample %d in epoch ' % idx, epoch_str(epoch))
+        print(' ... plotting sample %d in epoch. ' % idx, epoch_str(epoch))
         image_data[29 * idx:29 * idx + 28, :] = tile_raster_images(
             X=vis_mf,
             img_shape=(28, 28),
@@ -801,7 +808,8 @@ def sample_from_rbm(rbm, test_set_x, rng, n_chains, n_samples,
         fig2 = plt.figure(tofigure)
         fig2.clear()
         plt.imshow(image, cmap='Greys_r')
-        plt.title('%s after %s epochs.' % (figtitle, epoch_str(epoch)))
+        plt.title('%s after %s epochs. Every %d gibbss.' 
+                  % (figtitle, epoch_str(epoch), n_samples))
         plt.show(block=False)
         plt.draw()
         
